@@ -14,36 +14,11 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#ifndef BOTIFEX_CMDS_H_
+#define BOTIFEX_CMDS_H_
+
 #include "libirc.h"
-#include <unistd.h>
-#include <stdio.h>
-#include <string.h>
 
-void *irc_event_privmsg(irc_conn_t *c, struct irc_message *m)
-{
-	if (m->middle[0] != '#')
-		return NULL;
-	printf("privmsg: %s\n", m->suffix);
-	irc_privmsg(c, m->middle, m->suffix);
-	return NULL;
-}
+int bot_cmds_parse(irc_conn_t *c, struct irc_message *m);
 
-int main(int argc, char **argv)
-{
-	struct irc_callbacks calls;
-	memset(&calls, 0, sizeof(struct irc_callbacks));
-	calls.privmsg = irc_event_privmsg;
-	irc_conn_t *tmp = irc_connect("irc.euirc.net:6667", "scosu_lib_test", "blub", NULL, &calls);
-	printf("waiting\n");
-	sleep(5);
-	irc_join_channel(tmp, "#merastorum");
-	sleep(1);
-	irc_privmsg(tmp, "#merastorum", "Testmessage");
-	sleep(30);
-	printf("exiting\n");
-	irc_disconnect(tmp, "WAHAHAHA");
-	sleep(2);
-	printf("clean shutdown\n");
-	return 0;
-}
-
+#endif /* BOTIFEX_CMDS_H_ */

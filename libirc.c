@@ -162,7 +162,10 @@ static void irc_parse_cmd(irc_conn_t *c, char *cmd)
 	if (cmd[0] == ':') {
 		m.source = cmd + 1;
 		int i;
-		for (i = 1; cmd[i] != '\0' && cmd[i] != ' '; ++i) {}
+		for (i = 1; cmd[i] != '\0' && cmd[i] != ' '; ++i) {
+			if (cmd[i] == '!')
+				cmd[i] = '\0';
+		}
 		if (cmd[i] == '\0')
 			return;
 		cmd[i] = '\0';
@@ -259,7 +262,7 @@ static void *irc_ping(irc_conn_t *c, struct irc_message *m)
 }
 
 irc_conn_t *irc_connect(const char *host_port, const char *nick, const char *name,
-		const char *passwd, struct irc_callbacks *callbacks)
+		const char *passwd, struct irc_callbacks *callbacks, void *data)
 {
 	g_type_init();
 	if (!g_thread_get_initialized())
@@ -277,6 +280,7 @@ irc_conn_t *irc_connect(const char *host_port, const char *nick, const char *nam
 	}
 	res->in = g_io_stream_get_input_stream((GIOStream*) res->conn);
 	res->out = g_io_stream_get_output_stream((GIOStream*) res->conn);
+	res->user_data = data;
 
 	memset(&res->callbacks, 0, sizeof(struct irc_callbacks));
 	res->callbacks.ping = irc_ping;
@@ -343,5 +347,8 @@ void irc_set_user_data(irc_conn_t *c, void *data)
 	c->user_data = data;
 }
 
-
+void *irc_get_user_data(irc_conn_t *c)
+{
+	return c->user_data;
+}
 

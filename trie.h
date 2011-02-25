@@ -14,36 +14,36 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef BOTIFEX_KNOW_H_
-#define BOTIFEX_KNOW_H_
+#ifndef TRIE_H_
+#define TRIE_H_
 
-#define BOTIFEX_KNOW_VERSION 0.1.0
+#include <stdlib.h>
+#include <glib.h>
 
-#include "trie.h"
+typedef struct
+{
+	char *ind;
+	void *data;
+	GSList *childs;
+} trie_element_t;
 
-struct bot_message {
-	const char *src;
-	const char *dst;
-	const char *msg;
-};
-
-struct bot_callbacks {
-	void (*send_channel)(void *, struct bot_message *);
-	void (*send_user)(void *, struct bot_message *);
-};
-
-typedef struct {
-	struct bot_callbacks callbacks;
-	int wordct;
-	trie_t *words;
-} bot_know_t;
+typedef struct
+{
+	trie_element_t* root;
+} trie_t;
 
 
-bot_know_t *bot_know_init(struct bot_callbacks *callbacks);
-int bot_know_store(bot_know_t *b, const char *path);
-int bot_know_load(bot_know_t *b, const char *path);
-int bot_know_reset(bot_know_t *b);
-void bot_know_channel_msg(bot_know_t *b, struct bot_message *m, void *user_data);
-void bot_know_user_msg(bot_know_t *b, struct bot_message *m, void *user_data);
+trie_t *trie_init();
 
-#endif /* BOTIFEX_KNOW_H_ */
+int trie_load_file(trie_t *t, const char *path);
+
+int trie_save_file(trie_t *t, const char *path);
+
+void *trie_add(trie_t *t, const char *ind, const size_t size);
+
+void trie_del(trie_t *t, const char *ind);
+
+void *trie_get(trie_t *t, const char *ind);
+
+
+#endif /* TRIE_H_ */

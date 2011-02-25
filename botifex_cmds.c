@@ -14,36 +14,10 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef BOTIFEX_KNOW_H_
-#define BOTIFEX_KNOW_H_
+#include "libirc.h"
+#include "botifex_cmds.h"
 
-#define BOTIFEX_KNOW_VERSION 0.1.0
-
-#include "trie.h"
-
-struct bot_message {
-	const char *src;
-	const char *dst;
-	const char *msg;
-};
-
-struct bot_callbacks {
-	void (*send_channel)(void *, struct bot_message *);
-	void (*send_user)(void *, struct bot_message *);
-};
-
-typedef struct {
-	struct bot_callbacks callbacks;
-	int wordct;
-	trie_t *words;
-} bot_know_t;
-
-
-bot_know_t *bot_know_init(struct bot_callbacks *callbacks);
-int bot_know_store(bot_know_t *b, const char *path);
-int bot_know_load(bot_know_t *b, const char *path);
-int bot_know_reset(bot_know_t *b);
-void bot_know_channel_msg(bot_know_t *b, struct bot_message *m, void *user_data);
-void bot_know_user_msg(bot_know_t *b, struct bot_message *m, void *user_data);
-
-#endif /* BOTIFEX_KNOW_H_ */
+int bot_cmds_parse(irc_conn_t *c, struct irc_message *m)
+{
+	return 1;
+}

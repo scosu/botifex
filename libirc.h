@@ -1,9 +1,18 @@
-/*
- * libirc.h
- *
- *  Created on: Feb 24, 2011
- *      Author: scosu
- */
+//    botifex is a communication bot for irc networks learning from conversations
+//    Copyright (C) 2011  Markus Pargmann <mpargman_AT_allfex_DOT_org>
+//
+//    This program is free software: you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation, either version 3 of the License, or
+//    (at your option) any later version.
+//
+//    This program is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #ifndef LIBIRC_H_
 #define LIBIRC_H_
@@ -123,8 +132,9 @@ struct _irc_conn_t {
 };
 
 irc_conn_t *irc_connect(const char *host_port, const char *nick, const char *name,
-		const char *passwd, struct irc_callbacks *callbacks);
+		const char *passwd, struct irc_callbacks *callbacks, void *data);
 void irc_set_user_data(irc_conn_t *c, void *data);
+void *irc_get_user_data(irc_conn_t *c);
 void irc_set_nick(irc_conn_t *c, const char *nick);
 void irc_join_channel(irc_conn_t *c, const char *channel);
 void irc_leave_channel(irc_conn_t *c, const char *channel);
