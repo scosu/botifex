@@ -35,15 +35,12 @@ typedef struct
 
 trie_t *trie_init();
 
-int trie_load_file(trie_t *t, const char *path);
+//void trie_del(trie_t *t, const char *ind);
 
-int trie_save_file(trie_t *t, const char *path);
+//void *trie_get(trie_t *t, const char *ind);
 
-void *trie_add(trie_t *t, const char *ind, const size_t size);
+int trie_get_or_create(trie_t* t, void **data, const char* ind, const size_t size);
 
-void trie_del(trie_t *t, const char *ind);
-
-void *trie_get(trie_t *t, const char *ind);
-
+void trie_iter(trie_t *t, void itercall (void *data));
 
 #endif /* TRIE_H_ */

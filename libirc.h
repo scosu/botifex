@@ -68,10 +68,10 @@ enum {
 };
 
 struct irc_message {
-	const char *source;
-	const char *cmd;
-	const char *middle;
-	const char *suffix;
+	char *source;
+	char *cmd;
+	char *middle;
+	char *suffix;
 };
 
 struct irc_callbacks {

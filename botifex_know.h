@@ -22,9 +22,15 @@
 #include "trie.h"
 
 struct bot_message {
-	const char *src;
-	const char *dst;
-	const char *msg;
+	char *src;
+	char *dst;
+	char *msg;
+};
+
+struct bot_know_item {
+	char *word;
+	GSequence *nexts;
+	GSequence *assoc;
 };
 
 struct bot_callbacks {
@@ -36,6 +42,13 @@ typedef struct {
 	struct bot_callbacks callbacks;
 	int wordct;
 	trie_t *words;
+
+	struct bot_know_item start;
+	struct bot_know_item end;
+
+	int learn;
+	int talky;
+
 } bot_know_t;
 
 
@@ -45,5 +58,7 @@ int bot_know_load(bot_know_t *b, const char *path);
 int bot_know_reset(bot_know_t *b);
 void bot_know_channel_msg(bot_know_t *b, struct bot_message *m, void *user_data);
 void bot_know_user_msg(bot_know_t *b, struct bot_message *m, void *user_data);
+void bot_know_set_learn(bot_know_t *b, int enable);
+void bot_know_set_talky(bot_know_t *b, int level);
 
 #endif /* BOTIFEX_KNOW_H_ */

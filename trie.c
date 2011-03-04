@@ -24,6 +24,7 @@
 trie_t *trie_init()
 {
 	trie_t *t = malloc(sizeof(trie_t));
+	t->root = malloc(sizeof(trie_element_t));
 	t->root->data = NULL;
 	t->root->ind = NULL;
 	t->root->childs = NULL;
@@ -34,121 +35,143 @@ trie_t *trie_init()
 
 //int trie_save_file(trie_t* t, const char path);
 
-static inline trie_element_t* trie_element_match(GSList* list, const char** word_ind, int* most_match)
+
+
+static trie_element_t* trie_element_match_child(GSList* list, const char** word_ind,
+		int* most_match)
 {
-	if(unlikely(list == NULL))
-	{
+	*most_match = 0;
+	if (unlikely(list == NULL)) {
 		return NULL;
 	}
-	GSList* cur = list;
-	const char* word = *word_ind;
-	int no_match = 1;
+	GSList *cur = list;
+	const char *word = *word_ind;
 	int ind;
-	most_match = 0;
-	do
-	{
-		const char* element = ((trie_element_t*)cur->data)->ind;
+	while (1) {
+		const char* element = ((trie_element_t*) (cur->data))->ind;
 
-		for(ind = 0; element[ind] == word[ind]; ++ind){no_match = 0;}
-		if(element[ind] == '\0')
-		{
-			word_ind += ind;
-			return (trie_element_t*)cur->data;
+		for (ind = 0; element[ind] == word[ind] && element[ind] != '\0'
+				&& word[ind] != '\0'; ++ind) {}
+		if (element[ind] == '\0') {
+			*word_ind += ind;
+			return (trie_element_t*) (cur->data);
 		}
+		if (ind || g_slist_next(cur) == NULL)
+			break;
+		cur = g_slist_next(cur);
 	}
-	while(likely(no_match && (cur = g_slist_next(cur)) != NULL));
-	if(most_match != NULL)
-	{
+	if (most_match != NULL) {
 		*most_match = ind;
 	}
-	return (trie_element_t*)cur->data;
-}
-
-void* trie_add(trie_t* t, const char* ind, const size_t size)
-{
-	trie_element_t* cur = t->root;
-	const char* i = ind;
-	while(1)
-	{
-		int matchct;
-		trie_element_t* result = trie_element_match(cur->childs, &i, &matchct);
-		if(unlikely(result == NULL))
-		{
-			trie_element_t* tmp = malloc(sizeof(trie_element_t));
-			tmp->ind = malloc((i-ind)*sizeof(char) + 1);
-			tmp->data = malloc(size);
-			tmp->childs = NULL;
-
-			result->childs = g_slist_prepend(result->childs, tmp);
-
-			return tmp->data;
-		}
-		if(unlikely(matchct != 0))
-		{
-			// first split the current existing edge
-			int moved_length = strlen(result->ind);
-			char* moved = malloc(sizeof(char) * moved_length+1);
-			char* to_current = malloc(sizeof(char) * matchct+1);
-			strncpy(to_current, result->ind, matchct);
-			to_current[matchct-1] = '\0';
-			strcpy(moved, result->ind + matchct);
-			free(result->ind);
-			result->ind = to_current;
-			trie_element_t* tmp = malloc(sizeof(trie_element_t));
-			tmp->childs = result->childs;
-			tmp->data = result->data;
-			result->data = NULL;
-			tmp->ind = moved;
-			result->childs = NULL;
-			result->childs = g_slist_prepend(result->childs, tmp);
-			tmp = malloc(sizeof(trie_element_t));
-			tmp->childs = NULL;
-			tmp->ind = malloc(strlen(i + matchct) * sizeof(char) + 1);
-			strcpy(tmp->ind, i);
-			return tmp->data = malloc(size);
-		}
-		cur = result;
-		if(unlikely(*i != '\0'))
-		{
-			return cur->data;
-		}
-	}
-	return NULL;
+	if (!ind)
+		return NULL;
+	return (trie_element_t*) (cur->data);
 }
 
 void trie_del(trie_t* t, const char* ind)
 {
 	trie_element_t* cur = t->root;
-	while(1)
-	{
-		cur = trie_element_match(cur->childs, &ind, NULL);
-		if(unlikely(cur == NULL))
-		{
+	while (1) {
+		cur = trie_element_match_child(cur->childs, &ind, NULL);
+		if (unlikely(cur == NULL)) {
 			return;
 		}
-		if(unlikely(*ind != '\0'))
-		{
+		if (unlikely(*ind != '\0')) {
 
 		}
 	}
 	return;
 }
 
+int trie_get_or_create(trie_t* t, void **data, const char* ind, const size_t size)
+{
+	trie_element_t* cur = t->root;
+	int most_match;
+	while (1) {
+		trie_element_t *new = trie_element_match_child(cur->childs, &ind, &most_match);
+		if (unlikely(new == NULL)) {
+			trie_element_t *tmp = malloc(sizeof(trie_element_t));
+			tmp->data = malloc(size);
+			tmp->childs = NULL;
+			tmp->ind = malloc((strlen(ind) + 1) * sizeof(char));
+			strcpy(tmp->ind, ind);
+			cur->childs = g_slist_prepend(cur->childs, tmp);
+			*data = tmp->data;
+			return 1;
+		}
+		if (unlikely(*ind == '\0')) {
+			if (new->data == NULL) {
+				new->data = malloc(size);
+				*data = new->data;
+				return 1;
+			}
+			*data = new->data;
+			return 0;
+		}
+		if (most_match != 0) {
+			trie_element_t *old1 = new;
+			trie_element_t *old2 = malloc(sizeof(trie_element_t));
+			trie_element_t *new2 = malloc(sizeof(trie_element_t));
+			char *tmp_ind = old1->ind;
+
+			old2->ind = malloc((strlen(tmp_ind) - most_match + 1) * sizeof(char));
+			strcpy(old2->ind, tmp_ind + most_match);
+			old2->childs = old1->childs;
+			old2->data = old1->data;
+
+			new2->childs = NULL;
+			new2->data = malloc(size);
+			*data = new2->data;
+			new2->ind = malloc((strlen(ind) - most_match + 1) * sizeof(char));
+			strcpy(new2->ind, ind + most_match);
+
+			old1->ind = malloc((most_match + 1) * sizeof(char));
+			strncpy(old1->ind, tmp_ind, most_match);
+			old1->ind[most_match] = '\0';
+			old1->childs = NULL;
+			old1->data = NULL;
+			old1->childs = g_slist_prepend(old1->childs, old2);
+			old1->childs = g_slist_prepend(old1->childs, new2);
+
+			free(tmp_ind);
+
+			return 1;
+		}
+		cur = new;
+
+	}
+	return -1;
+}
+
 void* trie_get(trie_t* t, const char* ind)
 {
 	trie_element_t* cur = t->root;
-	while(1)
-	{
-		cur = trie_element_match(cur->childs, &ind, NULL);
-		if(unlikely(cur == NULL))
-		{
+	while (1) {
+		cur = trie_element_match_child(cur->childs, &ind, NULL);
+		if (unlikely(cur == NULL)) {
 			return NULL;
 		}
-		if(unlikely(*ind != '\0'))
-		{
+		if (unlikely(*ind == '\0')) {
 			return cur->data;
 		}
 	}
 	return NULL;
+}
+
+static void trie_iter_rec(trie_element_t *te, void itercall (void *data))
+{
+	GSList *child = te->childs;
+	if (te->data != NULL)
+		itercall(te->data);
+	if (child == NULL)
+		return;
+	do {
+		trie_iter_rec(child->data, itercall);
+	} while (NULL != (child = g_slist_next(child)));
+}
+
+void trie_iter(trie_t *t, void itercall (void *data))
+{
+	trie_iter_rec(t->root, itercall);
 }
 

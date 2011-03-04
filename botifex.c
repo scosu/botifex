@@ -22,12 +22,21 @@
 #include <stdio.h>
 #include <string.h>
 
+
+#define IRC
+
 void *irc_event_privmsg(irc_conn_t *c, struct irc_message *m)
 {
 	if (bot_cmds_parse(c, m) == 0)
 		return NULL;
 	bot_know_t *bot = (bot_know_t *) irc_get_user_data(c);
 	struct bot_message msg = {m->source, m->middle, m->suffix};
+	if (msg.msg[0] == '!') {
+		bot_know_set_talky(bot, 1);
+		++msg.msg;
+	} else {
+		bot_know_set_talky(bot, 0);
+	}
 	if (m->middle[0] != '#') {
 		bot_know_user_msg(bot, &msg, (void *) c);
 		return NULL;
@@ -38,7 +47,10 @@ void *irc_event_privmsg(irc_conn_t *c, struct irc_message *m)
 
 void *send_channel(void *user_data, struct bot_message *m)
 {
+	printf("irc_message: %s\n", m->msg);
+#ifdef IRC
 	irc_privmsg((irc_conn_t *) user_data, m->dst, m->msg);
+#endif
 	return NULL;
 }
 
@@ -55,6 +67,21 @@ int main(int argc, char **argv)
 	bot_calls.send_user = send_user;
 	bot_know_t *bot = bot_know_init(&bot_calls);
 
+#ifndef IRC
+
+	char buf[512];
+
+	struct bot_message msg = {NULL, NULL, buf};
+	strcpy(buf, "blubba... blub :-D tatata");
+	bot_know_channel_msg(bot, &msg, NULL);
+
+/*	strcpy(buf, "bli blub");
+	bot_know_channel_msg(bot, &msg, NULL);*/
+
+//	strcpy(buf, "blub blubba bla");
+//	bot_know_channel_msg(bot, &msg, NULL);
+
+#else
 	struct irc_callbacks calls;
 	memset(&calls, 0, sizeof(struct irc_callbacks));
 	calls.privmsg = irc_event_privmsg;
@@ -63,12 +90,14 @@ int main(int argc, char **argv)
 	sleep(5);
 	irc_join_channel(tmp, "#merastorum");
 	sleep(1);
-	irc_privmsg(tmp, "#merastorum", "Testmessage");
-	sleep(30);
+	irc_privmsg(tmp, "#merastorum", "WAHAHAHA");
+	while (1)
+		sleep(1);
 	printf("exiting\n");
 	irc_disconnect(tmp, "WAHAHAHA");
 	sleep(2);
 	printf("clean shutdown\n");
+#endif
 	return 0;
 }
 
