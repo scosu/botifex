@@ -111,7 +111,7 @@ int trie_get_or_create(trie_t* t, void **data, const char* ind, const size_t siz
 		if (most_match != 0) {
 			trie_element_t *old1 = new;
 			trie_element_t *old2 = malloc(sizeof(trie_element_t));
-			trie_element_t *new2 = malloc(sizeof(trie_element_t));
+			trie_element_t *new2 = NULL;
 			char *tmp_ind = old1->ind;
 
 			old2->ind = malloc((strlen(tmp_ind) - most_match + 1) * sizeof(char));
@@ -119,19 +119,28 @@ int trie_get_or_create(trie_t* t, void **data, const char* ind, const size_t siz
 			old2->childs = old1->childs;
 			old2->data = old1->data;
 
-			new2->childs = NULL;
-			new2->data = malloc(size);
-			*data = new2->data;
-			new2->ind = malloc((strlen(ind) - most_match + 1) * sizeof(char));
-			strcpy(new2->ind, ind + most_match);
+			if (strlen(ind) - most_match != 0) {
+				new2 = malloc(sizeof(trie_element_t));
+				new2->childs = NULL;
+				new2->data = malloc(size);
+				*data = new2->data;
+				new2->ind = malloc((strlen(ind) - most_match + 1) * sizeof(char));
+				strcpy(new2->ind, ind + most_match);
+			}
 
 			old1->ind = malloc((most_match + 1) * sizeof(char));
 			strncpy(old1->ind, tmp_ind, most_match);
 			old1->ind[most_match] = '\0';
 			old1->childs = NULL;
-			old1->data = NULL;
+			if (new2 == NULL) {
+				old1->data = malloc(size);
+				*data = old1->data;
+			} else {
+				old1->data = NULL;
+			}
 			old1->childs = g_slist_prepend(old1->childs, old2);
-			old1->childs = g_slist_prepend(old1->childs, new2);
+			if (new2 != NULL)
+				old1->childs = g_slist_prepend(old1->childs, new2);
 
 			free(tmp_ind);
 
@@ -158,20 +167,20 @@ void* trie_get(trie_t* t, const char* ind)
 	return NULL;
 }
 
-static void trie_iter_rec(trie_element_t *te, void itercall (void *data))
+static void trie_iter_rec(trie_element_t *te, void itercall (void *data, void *user_data), void *user_data)
 {
 	GSList *child = te->childs;
 	if (te->data != NULL)
-		itercall(te->data);
+		itercall(te->data, user_data);
 	if (child == NULL)
 		return;
 	do {
-		trie_iter_rec(child->data, itercall);
+		trie_iter_rec(child->data, itercall, user_data);
 	} while (NULL != (child = g_slist_next(child)));
 }
 
-void trie_iter(trie_t *t, void itercall (void *data))
+void trie_iter(trie_t *t, void itercall (void *data, void *user_data), void *user_data)
 {
-	trie_iter_rec(t->root, itercall);
+	trie_iter_rec(t->root, itercall, user_data);
 }
 

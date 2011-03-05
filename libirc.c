@@ -247,6 +247,7 @@ static void *irc_listener(void *data)
 			&& !c->shutdown) {
 		printf("[debug] %s\n", buf);
 		irc_parse_cmd(c, buf);
+		g_free(buf);
 	}
 	printf("end reading\n");
 	g_object_unref(c->in);

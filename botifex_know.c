@@ -28,16 +28,120 @@ struct bot_know_relation {
 	struct bot_know_item *dst;
 };
 
+struct output_helper {
+	GIOChannel *out;
+	bot_know_t *b;
+};
+
+struct conversation {
+	int last_action;
+	int next_action;
+	char *identifier;
+	void *user_data;
+	GSList *last_sent;
+};
+
+static struct bot_know_item *bot_know_get_word(bot_know_t *b, char *word, int length);
+static void bot_know_relation_inc(GSequence *rel_cont, struct bot_know_item *dst,
+		int inc);
+static void bot_know_reply(bot_know_t *b, struct conversation *conv, int reply);
 
 
-int bot_know_store(bot_know_t *b, const char *path)
+
+void bot_know_dump_assocs(GSequence *s, struct output_helper *h) {
+	char buf[128];
+	GSequenceIter *j = g_sequence_get_begin_iter(s);
+	if (j != NULL) {
+		while (!g_sequence_iter_is_end(j)) {
+			struct bot_know_relation *rel = g_sequence_get(j);
+			sprintf(buf, " %d ", rel->weight);
+			g_io_channel_write_chars(h->out, buf, -1, NULL, NULL);
+			if (rel->dst != &h->b->end)
+				g_io_channel_write_chars(h->out, rel->dst->word, -1, NULL, NULL);
+			g_io_channel_write_chars(h->out, "\n", -1, NULL, NULL);
+			j = g_sequence_iter_next(j);
+		}
+	}
+}
+
+void bot_know_dump_item(struct bot_know_item *i, struct output_helper *h)
 {
+	g_io_channel_write_chars(h->out, i->word, -1, NULL, NULL);
+	g_io_channel_write_chars(h->out, "\n", -1, NULL, NULL);
+	bot_know_dump_assocs(i->nexts, h);
+	g_io_channel_write_chars(h->out, " \n", -1, NULL, NULL);
+	bot_know_dump_assocs(i->assoc, h);
+}
+
+int bot_know_save(bot_know_t *b, const char *path)
+{
+	struct output_helper h;
+	h.out = g_io_channel_new_file(path, "w", NULL);
+	h.b = b;
+	bot_know_dump_item(&b->start, &h);
+	trie_iter((void *) b->words, (void *) bot_know_dump_item, &h);
+	g_io_channel_shutdown(h.out, 1, NULL);
 	return 0;
 }
 
 int bot_know_load(bot_know_t *b, const char *path)
 {
+	GIOChannel *in = g_io_channel_new_file(path, "r", NULL);
+	char *buf;
+	enum {
+		PARSER_SENT_REL,
+		PARSER_ASSOC_REL
+	} parser_state;
+	struct bot_know_item *citem = &b->start;
+	int first = 1;
+	gsize read;
+	while (G_IO_STATUS_NORMAL == g_io_channel_read_line(in, &buf, &read, NULL, NULL)) {
+		buf[read - 1] = '\0';
+		printf("READ:%s\n", buf);
+		if (buf[0] == ' ') {
+			if (buf[1] == '\0') {
+				++parser_state;
+			} else {
+				int i;
+				for (i = 1; buf[i] != ' '; ++i) {}
+				buf[i] = '\0';
+				int weight = g_ascii_strtoll(buf + 1, NULL, 0);
+				struct bot_know_item *dst;
+				printf("GETTING:%s\n", buf + i + 1);
+				if (buf[i + 1] == '\0')
+					dst = &b->end;
+				else
+					dst = bot_know_get_word(b, buf + i + 1, -1);
+
+				switch (parser_state) {
+				case PARSER_SENT_REL:
+					bot_know_relation_inc(citem->nexts, dst, weight);
+					break;
+				case PARSER_ASSOC_REL:
+					bot_know_relation_inc(citem->assoc, dst, weight);
+					break;
+				}
+			}
+		} else {
+			parser_state = PARSER_SENT_REL;
+			if (first)
+				first = 0;
+			else
+				citem = bot_know_get_word(b, buf, -1);
+			printf("GETTING:%s\n", buf);
+		}
+		g_free(buf);
+	}
 	return 0;
+}
+
+void bot_know_set_file(bot_know_t *b, const char *path)
+{
+	if (b->path != NULL) {
+		free(b->path);
+	}
+	b->path = malloc((strlen(path) + 1) * sizeof(char));
+	strcpy(b->path, path);
 }
 
 int bot_know_reset(bot_know_t *b)
@@ -45,9 +149,35 @@ int bot_know_reset(bot_know_t *b)
 	return 0;
 }
 
+#define DUMP_INTERVAL 360
+
 void *bot_know_run(void *data)
 {
 	bot_know_t *b = data;
+	int dump_know = 0;
+	while (!b->shutdown) {
+		g_usleep(500000);
+		if (b->path && ++dump_know == DUMP_INTERVAL) {
+			dump_know = 0;
+			g_static_mutex_lock(&b->lock);
+			if (b->path) {
+				bot_know_save(b, b->path);
+			}
+			g_static_mutex_unlock(&b->lock);
+		}
+		if (b->talky) {
+			GSequenceIter *i = g_sequence_get_begin_iter(b->conversations);
+			while (!g_sequence_iter_is_end(i)) {
+				struct conversation *conv = g_sequence_get(i);
+				if (++(conv->last_action) == conv->next_action) {
+					bot_know_reply(b, conv, 0);
+					conv->last_action = 0;
+					conv->next_action = g_random_int_range(200, 500 + (100 - b->talky) * 30);
+				}
+				i = g_sequence_iter_next(i);
+			}
+		}
+	}
 	return NULL;
 }
 
@@ -97,16 +227,26 @@ bot_know_t *bot_know_init(struct bot_callbacks *callbacks)
 	b->words = trie_init();
 	b->talky = 0;
 	b->learn = 1;
+	b->shutdown = 0;
+	b->path = NULL;
 	bot_know_item_init(&b->start, "start");
 	bot_know_item_init(&b->end, "end");
+	b->conversations = g_sequence_new(NULL);
+	g_thread_init(NULL);
+	g_static_mutex_init(&b->lock);
+	g_static_mutex_unlock(&b->lock);
+	b->thread = g_thread_create(bot_know_run, b, 1, NULL);
 	return b;
 }
 
 static struct bot_know_item *bot_know_get_word(bot_know_t *b, char *word, int length)
 {
 	struct bot_know_item *item;
-	const char replaced = word[length];
-	word[length] = '\0';
+	char replaced;
+	if (length != -1) {
+		replaced = word[length];
+		word[length] = '\0';
+	}
 	int created = trie_get_or_create(b->words, (void **)&item, word,
 			sizeof(struct bot_know_item));
 	if (created) {
@@ -115,7 +255,8 @@ static struct bot_know_item *bot_know_get_word(bot_know_t *b, char *word, int le
 	} else {
 		printf("found a word: %s\n", word);
 	}
-	word[length] = replaced;
+	if (length != -1)
+		word[length] = replaced;
 	return item;
 }
 
@@ -156,7 +297,7 @@ static void bot_know_relation_inc(GSequence *rel_cont, struct bot_know_item *dst
 static void bot_know_learn_word(bot_know_t *b, struct bot_know_item *sprev,
 		GSList *prev, struct bot_know_item *word)
 {
-	printf("rel_inc: %s -> %s\n", sprev->word, word->word);
+	printf("[debug]: %s -> %s\n", sprev->word, word->word);
 	bot_know_relation_inc(sprev->nexts, word, 1);
 	GSList *i = prev;
 	if (i != NULL) {
@@ -170,9 +311,8 @@ static void bot_know_learn_word(bot_know_t *b, struct bot_know_item *sprev,
 }
 
 static GSList *bot_know_parse_sentence(bot_know_t *b, char *to_parse,
-		GSList *prev, const char *message_dst, void *user_data)
+		GSList *prev)
 {
-	int sep;
 	struct bot_know_item *litem = &b->start;
 	GSList *sent = NULL;
 	if (b->learn) {
@@ -259,10 +399,10 @@ static GSList *bot_know_parse_sentence(bot_know_t *b, char *to_parse,
 
 							bot_know_relation_inc(
 									((struct bot_know_item *) i->data)->assoc,
-									((struct bot_know_item *) j->data), 1);
-							bot_know_relation_inc(
+									((struct bot_know_item *) j->data), 5);
+							/*bot_know_relation_inc(
 									((struct bot_know_item *) j->data)->assoc,
-									((struct bot_know_item *) i->data), 1);
+									((struct bot_know_item *) i->data), 1);*/
 						} while (NULL != (j = g_slist_next(j)));
 					} while (NULL != (i = g_slist_next(i)));
 				}
@@ -275,16 +415,10 @@ static GSList *bot_know_parse_sentence(bot_know_t *b, char *to_parse,
 
 
 
-static GSList *bot_know_parse_msg(bot_know_t *b, char *to_parse,
-		GSList *last_sent, const char *message_dst, void *user_data)
+static void bot_know_parse_msg(bot_know_t *b, char *to_parse,
+		struct conversation *conv, int force_reply)
 {
-/*	int i;
-	enum {
-		SEPERATORS_0,
-		SEPERATORS_1,
-		SEPERATORS_IGNORE
-	} state = SEPERATORS_0;*/
-
+	conv->last_action = 0;
 	while (1) {
 		int sep = 0;
 		int i = 0;
@@ -304,8 +438,8 @@ search_again:
 		if (sep == -1) {
 out:
 			if (to_parse[0] != '\0') {
-				GSList *sent_tmp = last_sent;
-				last_sent = bot_know_parse_sentence(b, to_parse, last_sent, message_dst, user_data);
+				GSList *sent_tmp = conv->last_sent;
+				conv->last_sent = bot_know_parse_sentence(b, to_parse, conv->last_sent);
 				g_slist_free(sent_tmp);
 			}
 			break;
@@ -317,57 +451,90 @@ out:
 		++i;
 		char tmp = to_parse[i];
 		to_parse[i] = '\0';
-		GSList *sent_tmp = last_sent;
-		last_sent = bot_know_parse_sentence(b, to_parse, last_sent, message_dst, user_data);
+		GSList *sent_tmp = conv->last_sent;
+		conv->last_sent = bot_know_parse_sentence(b, to_parse, conv->last_sent);
 		g_slist_free(sent_tmp);
 		to_parse = to_parse + i;
 		to_parse[0] = tmp;
 		i = 0;
 	}
 
-	if (b->talky) {
-		char buf[512] = "";
-		char *bufc = buf;
-
-		struct bot_know_item *itemc = &b->start;
-
-		while (1) {
-			GSequenceIter *i = g_sequence_get_begin_iter(itemc->nexts);
-			struct bot_know_relation *relc = g_sequence_get(i);
-			int poss = g_sequence_get_length(itemc->nexts);
-			int rand = g_random_int_range(0, g_sequence_get_length(itemc->nexts) + 1);
-			while (rand > 0 && !g_sequence_iter_is_end(i)) {
-				if (rand > 1)
-					printf("yes\n");
-				relc = g_sequence_get(i);
-				rand -= relc->weight;
-				i = g_sequence_iter_next(i);
-			}
-			itemc = relc->dst;
-			if (itemc == &b->end)
-				break;
-			if (0 == bot_know_get_first_seperator(itemc->word, SEP_TYPE_BOTH)
-					&& buf != bufc)
-				--bufc;
-			strncpy(bufc, itemc->word, buf + 512 - bufc);
-			bufc += strlen(itemc->word);
-			if (bufc - buf + 2 >= 512) {
-				buf[512] = '\0';
-				break;
-			}
-			strcpy(bufc, " ");
-			++bufc;
-		}
-		struct bot_message tmp = {NULL, message_dst, buf};
-		b->callbacks.send_channel(user_data, &tmp);
+	if (force_reply || (b->talky && g_random_int_range(0, 100) <= b->talky)) {
+		bot_know_reply(b, conv, 1);
 	}
-	return last_sent;
 }
 
-void bot_know_channel_msg(bot_know_t *b, struct bot_message *m, void *user_data)
+static void bot_know_reply(bot_know_t *b, struct conversation *conv, int reply)
 {
-	GSList *last_sent = bot_know_parse_msg(b, m->msg, NULL, m->dst, user_data);
-	g_slist_free(last_sent);
+	char buf[512] = "";
+	char *bufc = buf;
+
+	struct bot_know_item *itemc = &b->start;
+
+	while (1) {
+		GSequenceIter *i = g_sequence_get_begin_iter(itemc->nexts);
+		struct bot_know_relation *relc = g_sequence_get(i);
+		int rand = g_random_int_range(0, g_sequence_get_length(itemc->nexts) + 1);
+		while (rand > 0 && !g_sequence_iter_is_end(i)) {
+			if (rand > 1)
+				printf("yes\n");
+			relc = g_sequence_get(i);
+			rand -= relc->weight;
+			i = g_sequence_iter_next(i);
+		}
+		itemc = relc->dst;
+		if (itemc == &b->end)
+			break;
+		if (0 == bot_know_get_first_seperator(itemc->word, SEP_TYPE_BOTH)
+				&& buf != bufc)
+			--bufc;
+		strncpy(bufc, itemc->word, buf + 512 - bufc);
+		bufc += strlen(itemc->word);
+		if (bufc - buf + 2 >= 512) {
+			buf[512] = '\0';
+			break;
+		}
+		strcpy(bufc, " ");
+		++bufc;
+	}
+	if (buf[0] == '\0')
+		return;
+	struct bot_message tmp = {NULL, conv->identifier, buf};
+	b->callbacks.send_channel(conv->user_data, &tmp);
+}
+
+gint bot_know_conv_cmp(gconstpointer a, gconstpointer b, gpointer user_data)
+{
+	const struct conversation *ac = a;
+	const struct conversation *bc = b;
+	return strcmp(ac->identifier, bc->identifier);
+}
+
+static struct conversation *bot_know_get_create_conversation(
+		bot_know_t *b, char *identifier, void *user_data)
+{
+	struct conversation search;
+	search.identifier = identifier;
+	GSequenceIter *i = g_sequence_lookup(b->conversations, &search,
+			bot_know_conv_cmp, NULL);
+	if (i == NULL) {
+		struct conversation *tmp = malloc(sizeof(struct conversation));
+		tmp->identifier = malloc((strlen(identifier) + 1) * sizeof(char));
+		strcpy(tmp->identifier, identifier);
+		tmp->last_action = 0;
+		tmp->last_sent = NULL;
+		tmp->next_action = g_random_int_range(1000, 1000 + (100 - b->talky) * 10);
+		tmp->user_data = user_data;
+		i = g_sequence_insert_sorted(b->conversations, tmp, bot_know_conv_cmp, NULL);
+	}
+	return g_sequence_get(i);
+}
+
+void bot_know_channel_msg(bot_know_t *b, struct bot_message *m, void *user_data,
+		int force_reply)
+{
+	struct conversation *conv = bot_know_get_create_conversation(b, m->dst, user_data);
+	bot_know_parse_msg(b, m->msg, conv, force_reply);
 }
 
 void bot_know_user_msg(bot_know_t *b, struct bot_message *m, void *user_data)

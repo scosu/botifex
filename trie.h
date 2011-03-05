@@ -41,6 +41,6 @@ trie_t *trie_init();
 
 int trie_get_or_create(trie_t* t, void **data, const char* ind, const size_t size);
 
-void trie_iter(trie_t *t, void itercall (void *data));
+void trie_iter(trie_t *t, void itercall (void *data, void *user_data), void *user_data);
 
 #endif /* TRIE_H_ */

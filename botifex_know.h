@@ -49,14 +49,24 @@ typedef struct {
 	int learn;
 	int talky;
 
+	int shutdown;
+
+	char *path;
+
+	GThread *thread;
+	GStaticMutex lock;
+
+	GSequence *conversations;
 } bot_know_t;
 
 
 bot_know_t *bot_know_init(struct bot_callbacks *callbacks);
-int bot_know_store(bot_know_t *b, const char *path);
+void bot_know_set_file(bot_know_t *b, const char *path);
+int bot_know_save(bot_know_t *b, const char *path);
 int bot_know_load(bot_know_t *b, const char *path);
 int bot_know_reset(bot_know_t *b);
-void bot_know_channel_msg(bot_know_t *b, struct bot_message *m, void *user_data);
+void bot_know_channel_msg(bot_know_t *b, struct bot_message *m, void *user_data,
+		int force_reply);
 void bot_know_user_msg(bot_know_t *b, struct bot_message *m, void *user_data);
 void bot_know_set_learn(bot_know_t *b, int enable);
 void bot_know_set_talky(bot_know_t *b, int level);
