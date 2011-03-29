@@ -18,7 +18,8 @@
 #define BOTIFEX_CMDS_H_
 
 #include "libirc.h"
+#include "botifex.h"
 
-int bot_cmds_parse(irc_conn_t *c, struct irc_message *m);
+int bot_cmds_parse_msg(struct botifex *know, irc_conn_t *c, struct irc_message *m);
 
 #endif /* BOTIFEX_CMDS_H_ */

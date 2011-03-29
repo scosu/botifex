@@ -36,6 +36,7 @@ struct output_helper {
 struct conversation {
 	int last_action;
 	int next_action;
+	int say_something;
 	char *identifier;
 	void *user_data;
 	GSList *last_sent;
@@ -45,7 +46,7 @@ static struct bot_know_item *bot_know_get_word(bot_know_t *b, char *word, int le
 static void bot_know_relation_inc(GSequence *rel_cont, struct bot_know_item *dst,
 		int inc);
 static void bot_know_reply(bot_know_t *b, struct conversation *conv, int reply);
-
+void *bot_know_sayer(void *data);
 
 
 void bot_know_dump_assocs(GSequence *s, struct output_helper *h) {
@@ -66,6 +67,8 @@ void bot_know_dump_assocs(GSequence *s, struct output_helper *h) {
 
 void bot_know_dump_item(struct bot_know_item *i, struct output_helper *h)
 {
+	if (i->word[0] == '\0')
+		g_critical("Dumping an empty item");
 	g_io_channel_write_chars(h->out, i->word, -1, NULL, NULL);
 	g_io_channel_write_chars(h->out, "\n", -1, NULL, NULL);
 	bot_know_dump_assocs(i->nexts, h);
@@ -122,7 +125,7 @@ int bot_know_load(bot_know_t *b, const char *path)
 					break;
 				}
 			}
-		} else {
+		} else if (buf[0] != '\0'){
 			parser_state = PARSER_SENT_REL;
 			if (first)
 				first = 0;
@@ -164,13 +167,15 @@ void *bot_know_run(void *data)
 				bot_know_save(b, b->path);
 			}
 			g_static_mutex_unlock(&b->lock);
+			g_static_mutex_unlock(&b->say_something);
 		}
 		if (b->talky) {
 			GSequenceIter *i = g_sequence_get_begin_iter(b->conversations);
 			while (!g_sequence_iter_is_end(i)) {
 				struct conversation *conv = g_sequence_get(i);
 				if (++(conv->last_action) == conv->next_action) {
-					bot_know_reply(b, conv, 0);
+					conv->say_something = 1;
+					g_static_mutex_unlock(&b->say_something);
 					conv->last_action = 0;
 					conv->next_action = g_random_int_range(200, 500 + (100 - b->talky) * 30);
 				}
@@ -180,7 +185,6 @@ void *bot_know_run(void *data)
 	}
 	return NULL;
 }
-
 
 static const char *sentence_seperators = ".?!";
 static const char *word_seperators = " ;:-+#\"*~/',^";
@@ -235,7 +239,10 @@ bot_know_t *bot_know_init(struct bot_callbacks *callbacks)
 	g_thread_init(NULL);
 	g_static_mutex_init(&b->lock);
 	g_static_mutex_unlock(&b->lock);
-	b->thread = g_thread_create(bot_know_run, b, 1, NULL);
+	g_static_mutex_init(&b->say_something);
+	g_static_mutex_trylock(&b->say_something);
+	b->manager = g_thread_create(bot_know_run, b, 1, NULL);
+	b->sayer = g_thread_create(bot_know_sayer, b, 1, NULL);
 	return b;
 }
 
@@ -399,10 +406,10 @@ static GSList *bot_know_parse_sentence(bot_know_t *b, char *to_parse,
 
 							bot_know_relation_inc(
 									((struct bot_know_item *) i->data)->assoc,
-									((struct bot_know_item *) j->data), 5);
-							/*bot_know_relation_inc(
+									((struct bot_know_item *) j->data), 80);
+							bot_know_relation_inc(
 									((struct bot_know_item *) j->data)->assoc,
-									((struct bot_know_item *) i->data), 1);*/
+									((struct bot_know_item *) i->data), 30);
 						} while (NULL != (j = g_slist_next(j)));
 					} while (NULL != (i = g_slist_next(i)));
 				}
@@ -460,7 +467,8 @@ out:
 	}
 
 	if (force_reply || (b->talky && g_random_int_range(0, 100) <= b->talky)) {
-		bot_know_reply(b, conv, 1);
+		conv->say_something = 2;
+		g_static_mutex_unlock(&b->say_something);
 	}
 }
 
@@ -470,14 +478,42 @@ static void bot_know_reply(bot_know_t *b, struct conversation *conv, int reply)
 	char *bufc = buf;
 
 	struct bot_know_item *itemc = &b->start;
+	if (conv->last_sent == NULL)
+		reply = 0;
 
 	while (1) {
+		long sum = 0;
+		if (reply) {
+			GSList *clast = conv->last_sent;
+			while (clast != NULL) {
+				GSequenceIter *e = g_sequence_get_begin_iter(((struct bot_know_item *) clast->data)->assoc);
+				while (!g_sequence_iter_is_end(e)) {
+					GSequenceIter *tmp = g_sequence_lookup(itemc->nexts, g_sequence_get(e), bot_know_item_cmp, NULL);
+					if (tmp != NULL) {
+						struct bot_know_relation *last_rel = g_sequence_get(tmp);
+						sum += last_rel->weight;
+					}
+					e = g_sequence_iter_next(e);
+				}
+				clast = g_slist_next(clast);
+			}
+		}
 		GSequenceIter *i = g_sequence_get_begin_iter(itemc->nexts);
 		struct bot_know_relation *relc = g_sequence_get(i);
-		int rand = g_random_int_range(0, g_sequence_get_length(itemc->nexts) + 1);
+		int rand = g_random_int_range(0, g_sequence_get_length(itemc->nexts) + sum + 1);
 		while (rand > 0 && !g_sequence_iter_is_end(i)) {
-			if (rand > 1)
-				printf("yes\n");
+			if (reply) {
+				GSList *clast = conv->last_sent;
+				while (clast != NULL) {
+					struct bot_know_item *lastitem = clast->data;
+					GSequenceIter *tmp = g_sequence_lookup(lastitem->assoc, g_sequence_get(i), bot_know_item_cmp, NULL);
+					if (tmp != NULL) {
+						struct bot_know_relation *last_rel = g_sequence_get(tmp);
+						rand -= last_rel->weight;
+					}
+					clast = g_slist_next(clast);
+				}
+			}
 			relc = g_sequence_get(i);
 			rand -= relc->weight;
 			i = g_sequence_iter_next(i);
@@ -497,9 +533,12 @@ static void bot_know_reply(bot_know_t *b, struct conversation *conv, int reply)
 		strcpy(bufc, " ");
 		++bufc;
 	}
+	--bufc;
+	*bufc = '\0';
 	if (buf[0] == '\0')
 		return;
 	struct bot_message tmp = {NULL, conv->identifier, buf};
+	g_usleep(150000 * (bufc - buf));
 	b->callbacks.send_channel(conv->user_data, &tmp);
 }
 
@@ -523,6 +562,7 @@ static struct conversation *bot_know_get_create_conversation(
 		strcpy(tmp->identifier, identifier);
 		tmp->last_action = 0;
 		tmp->last_sent = NULL;
+		tmp->say_something = 0;
 		tmp->next_action = g_random_int_range(1000, 1000 + (100 - b->talky) * 10);
 		tmp->user_data = user_data;
 		i = g_sequence_insert_sorted(b->conversations, tmp, bot_know_conv_cmp, NULL);
@@ -550,4 +590,22 @@ void bot_know_set_learn(bot_know_t *b, int enable)
 void bot_know_set_talky(bot_know_t *b, int level)
 {
 	b->talky = level;
+}
+
+void *bot_know_sayer(void *data)
+{
+	bot_know_t *b = data;
+	while (!b->shutdown) {
+		g_static_mutex_lock(&b->say_something);
+		GSequenceIter *i = g_sequence_get_begin_iter(b->conversations);
+		while (!g_sequence_iter_is_end(i)) {
+			struct conversation *conv = g_sequence_get(i);
+			if (conv->say_something) {
+				bot_know_reply(b, conv, conv->say_something - 1);
+				conv->say_something = 0;
+			}
+			i = g_sequence_iter_next(i);
+		}
+	}
+	return NULL;
 }

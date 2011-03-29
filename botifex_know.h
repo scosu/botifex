@@ -53,8 +53,10 @@ typedef struct {
 
 	char *path;
 
-	GThread *thread;
+	GThread *manager;
+	GThread *sayer;
 	GStaticMutex lock;
+	GStaticMutex say_something;
 
 	GSequence *conversations;
 } bot_know_t;

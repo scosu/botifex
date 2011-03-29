@@ -17,19 +17,57 @@
 #include "libirc.h"
 #include "botifex_cmds.h"
 #include "botifex_know.h"
+#include "botifex.h"
 
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 
 
+static struct botifex boti;
+static int shutdown = 0;
+
+
 #define IRC
+
+void *send_channel(void *user_data, struct bot_message *m);
+void *send_user(void *user_data, struct bot_message *m);
 
 void *irc_event_privmsg(irc_conn_t *c, struct irc_message *m)
 {
-	if (bot_cmds_parse(c, m) == 0)
+	if (m->suffix[0] == '\001')
 		return NULL;
-	bot_know_t *bot = (bot_know_t *) irc_get_user_data(c);
+	char buf[128];
+	switch (bot_cmds_parse_msg(&boti, c, m)) {
+	case -2:
+		strcpy(buf, "ERROR not authorized");
+		goto error_send;
+	case -1:
+		strcpy(buf, "ERROR command requires other parameters");
+		goto error_send;
+	case 0:
+		strcpy(buf, "DONE");
+error_send:
+		if (m->middle[0] != '#') {
+			struct bot_message bm = {
+					.src = NULL,
+					.dst = m->source,
+					.msg = buf
+			};
+			send_user((void*) c, &bm);
+		} else {
+			struct bot_message bm = {
+					.src = NULL,
+					.dst = m->middle,
+					.msg = buf
+			};
+			send_channel((void*) c, &bm);
+		}
+		return NULL;
+	default:
+		break;
+	}
+	bot_know_t *bot = boti.know;
 	struct bot_message msg = {m->source, m->middle, m->suffix};
 	printf("[debug] %s -> %s: %s\n", m->source, m->middle, m->suffix);
 	if (m->middle[0] != '#') {
@@ -49,7 +87,11 @@ void *irc_event_privmsg(irc_conn_t *c, struct irc_message *m)
 
 void *send_channel(void *user_data, struct bot_message *m)
 {
-	printf("irc_message: %s\n", m->msg);
+	if(user_data == NULL) {
+		printf(m->msg);
+		return NULL;
+	}
+	//printf("irc_message: %s\n", m->msg);
 #ifdef IRC
 	irc_privmsg((irc_conn_t *) user_data, m->dst, m->msg);
 #endif
@@ -62,23 +104,37 @@ void *send_user(void *user_data, struct bot_message *m)
 	return NULL;
 }
 
+void sig_shutdown(int sig)
+{
+	shutdown = 1;
+}
+
 int main(int argc, char **argv)
 {
 	struct bot_callbacks bot_calls;
 	bot_calls.send_channel = send_channel;
 	bot_calls.send_user = send_user;
-	bot_know_t *bot = bot_know_init(&bot_calls);
-	bot_know_set_talky(bot, 30);
+	boti.conns = NULL;
+	boti.name = NULL;
+	boti.know = bot_know_init(&bot_calls);
+	boti.passwd = NULL;
+	boti.authed = NULL;
+	bot_know_set_talky(boti.know, 30);
+
+	signal(SIGKILL, sig_shutdown);
+	signal(SIGTERM, sig_shutdown);
+	signal(SIGQUIT, sig_shutdown);
 
 #ifndef IRC
 
 	char buf[512];
 	char buf2[512];
-
+	bot_know_load(bot, "merastorum_buggy");
+	bot_know_save(bot, "merastorum_buggy2");
 	struct bot_message msg = {NULL, buf2, buf};
 	strcpy(buf, "um was wollen wir wetten dass er jetzt kaputt geht?^^");
 	strcpy(buf2, "#merastorum");
-	bot_know_channel_msg(bot, &msg, NULL, 0);
+	bot_know_channel_msg(bot, &msg, NULL, 1);
 	sleep(10);
 	//bot_know_save(bot, "test");
 	//bot_know_load(bot, "test");
@@ -91,7 +147,37 @@ int main(int argc, char **argv)
 //	bot_know_channel_msg(bot, &msg, NULL);
 
 #else
-	bot_know_load(bot, "merastorum");
+	GIOChannel *in = g_io_channel_unix_new(fileno(stdin));
+	char *buf;
+	gsize read_bytes;
+	while (G_IO_STATUS_NORMAL == g_io_channel_read_line(in, &buf, &read_bytes, NULL, NULL) && !shutdown) {
+		printf("line\n");
+		buf[read_bytes - 1] = '\0';
+		if (buf[0] == '!') {
+			printf("cmd\n");
+			struct irc_message msg = {
+					.source = NULL,
+					.cmd = NULL,
+					.middle = NULL,
+					.suffix = buf
+			};
+			int state = bot_cmds_parse_msg(&boti, NULL, &msg);
+			printf("state: %d\n", state);
+		}
+		g_free(buf);
+	}
+	while (!shutdown) {
+		sleep(1);
+	}
+	GSList *cur = boti.conns;
+	if (cur != NULL) {
+		do {
+			irc_disconnect(cur->data, "cya");
+		} while ((cur = g_slist_next(cur)) != NULL);
+	}
+
+
+/*	bot_know_load(bot, "merastorum");
 	bot_know_set_file(bot, "merastorum");
 	struct irc_callbacks calls;
 	memset(&calls, 0, sizeof(struct irc_callbacks));
@@ -101,13 +187,14 @@ int main(int argc, char **argv)
 	sleep(5);
 	irc_join_channel(tmp, "#merastorum");
 	sleep(1);
-	irc_privmsg(tmp, "#merastorum", "WAHAHAHA");
+	irc_join_channel(tmp, "#botifex");
+	//irc_privmsg(tmp, "#merastorum", "WAHAHAHA");
 	while (1)
 		sleep(1);
 	printf("exiting\n");
 	irc_disconnect(tmp, "WAHAHAHA");
 	sleep(2);
-	printf("clean shutdown\n");
+	printf("clean shutdown\n");*/
 #endif
 	return 0;
 }

@@ -87,6 +87,8 @@ int trie_get_or_create(trie_t* t, void **data, const char* ind, const size_t siz
 {
 	trie_element_t* cur = t->root;
 	int most_match;
+	if (ind[0] == '\0')
+		g_critical("trie empty index");
 	while (1) {
 		trie_element_t *new = trie_element_match_child(cur->childs, &ind, &most_match);
 		if (unlikely(new == NULL)) {
@@ -97,6 +99,8 @@ int trie_get_or_create(trie_t* t, void **data, const char* ind, const size_t siz
 			strcpy(tmp->ind, ind);
 			cur->childs = g_slist_prepend(cur->childs, tmp);
 			*data = tmp->data;
+			if (tmp->ind == '\0')
+				g_critical("trie created empty node");
 			return 1;
 		}
 		if (unlikely(*ind == '\0')) {
@@ -144,6 +148,8 @@ int trie_get_or_create(trie_t* t, void **data, const char* ind, const size_t siz
 
 			free(tmp_ind);
 
+			if (old1->ind == '\0' || old2->ind == '\0' || (new2 != NULL && new2->ind == '\0'))
+				g_critical("trie created empty node");
 			return 1;
 		}
 		cur = new;

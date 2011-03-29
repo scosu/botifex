@@ -306,6 +306,7 @@ irc_conn_t *irc_connect(const char *host_port, const char *nick, const char *nam
 	sprintf(buf, "%s %s %s %s", nick, nick, name, name);
 	irc_cmd(res, IRC_USER, buf, NULL);
 
+	sleep(3);
 	printf("done connecting\n");
 	return res;
 }
