@@ -84,7 +84,6 @@ int bot_cmds_parse(const char *c)
 {
 	int i = CMD_NONE;
 	for (; i--;) {
-		printf("comparing: '%s' | '%s'\n", cmds[i], c);
 		if (g_str_has_prefix(c, cmds[i]))
 			return i;
 	}
@@ -98,17 +97,16 @@ int bot_cmds_parse_msg(struct botifex *bot, irc_conn_t *c, struct irc_message *m
 	}
 	++m->suffix;
 	enum bot_cmds icode = bot_cmds_parse(m->suffix);
-	printf("code: %d\n", icode);
+	if (icode == CMD_NONE)
+		return 1;
 	int cmd_len = strlen(cmds[icode]);
-	printf("cmd_len: %d\n", cmd_len);
-	if (icode == CMD_NONE || (m->suffix[cmd_len] != '\0' && m->suffix[cmd_len] != ' '))
+	if (m->suffix[cmd_len] != '\0' && m->suffix[cmd_len] != ' ')
 		return 1;
 	if (right_needed[icode] && c != NULL && g_strcmp0(m->source, bot->authed) != 0)
 		return -2;
 	char *params;
 	if (m->suffix[cmd_len] == ' ') {
 		params = m->suffix + cmd_len + 1;
-		printf("params: %s\n", params);
 	} else
 		params = NULL;
 	if (c == NULL) {

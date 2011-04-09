@@ -94,13 +94,12 @@ int bot_know_load(bot_know_t *b, const char *path)
 	enum {
 		PARSER_SENT_REL,
 		PARSER_ASSOC_REL
-	} parser_state;
+	} parser_state = PARSER_SENT_REL;
 	struct bot_know_item *citem = &b->start;
 	int first = 1;
 	gsize read;
 	while (G_IO_STATUS_NORMAL == g_io_channel_read_line(in, &buf, &read, NULL, NULL)) {
 		buf[read - 1] = '\0';
-		printf("READ:%s\n", buf);
 		if (buf[0] == ' ') {
 			if (buf[1] == '\0') {
 				++parser_state;
@@ -110,7 +109,6 @@ int bot_know_load(bot_know_t *b, const char *path)
 				buf[i] = '\0';
 				int weight = g_ascii_strtoll(buf + 1, NULL, 0);
 				struct bot_know_item *dst;
-				printf("GETTING:%s\n", buf + i + 1);
 				if (buf[i + 1] == '\0')
 					dst = &b->end;
 				else
@@ -131,7 +129,6 @@ int bot_know_load(bot_know_t *b, const char *path)
 				first = 0;
 			else
 				citem = bot_know_get_word(b, buf, -1);
-			printf("GETTING:%s\n", buf);
 		}
 		g_free(buf);
 	}
@@ -259,8 +256,6 @@ static struct bot_know_item *bot_know_get_word(bot_know_t *b, char *word, int le
 	if (created) {
 		bot_know_item_init(item, word);
 		++b->wordct;
-	} else {
-		printf("found a word: %s\n", word);
 	}
 	if (length != -1)
 		word[length] = replaced;
@@ -304,7 +299,6 @@ static void bot_know_relation_inc(GSequence *rel_cont, struct bot_know_item *dst
 static void bot_know_learn_word(bot_know_t *b, struct bot_know_item *sprev,
 		GSList *prev, struct bot_know_item *word)
 {
-	printf("[debug]: %s -> %s\n", sprev->word, word->word);
 	bot_know_relation_inc(sprev->nexts, word, 1);
 	GSList *i = prev;
 	if (i != NULL) {
@@ -527,7 +521,7 @@ static void bot_know_reply(bot_know_t *b, struct conversation *conv, int reply)
 		strncpy(bufc, itemc->word, buf + 512 - bufc);
 		bufc += strlen(itemc->word);
 		if (bufc - buf + 2 >= 512) {
-			buf[512] = '\0';
+			buf[511] = '\0';
 			break;
 		}
 		strcpy(bufc, " ");

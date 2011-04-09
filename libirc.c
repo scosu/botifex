@@ -230,7 +230,6 @@ static void irc_parse_cmd(irc_conn_t *c, char *cmd)
 		start_compare = IRC_W;
 		break;
 	default:
-		printf("no CMD: %s\n", cmd);
 		return;
 	}
 	irc_parse_subcmd(c, cmd, &m, start_compare);
@@ -241,18 +240,14 @@ static void *irc_listener(void *data)
 	irc_conn_t *c = (irc_conn_t*) data;
 	char *buf;
 	gsize readct;
-	printf("start reading\n");
 	GDataInputStream *input = g_data_input_stream_new(c->in);
 	while(NULL != (buf = g_data_input_stream_read_line(input, &readct, NULL, NULL))
 			&& !c->shutdown) {
-		printf("[debug] %s\n", buf);
 		irc_parse_cmd(c, buf);
 		g_free(buf);
 	}
-	printf("end reading\n");
 	g_object_unref(c->in);
 	free(c);
-	printf("cleaned struct\n");
 	return NULL;
 }
 
@@ -307,7 +302,6 @@ irc_conn_t *irc_connect(const char *host_port, const char *nick, const char *nam
 	irc_cmd(res, IRC_USER, buf, NULL);
 
 	sleep(3);
-	printf("done connecting\n");
 	return res;
 }
 
@@ -341,7 +335,6 @@ void irc_disconnect(irc_conn_t *c, const char *msg)
 	g_object_unref(tmp_out);
 	g_object_unref(tmp_conn);
 	g_object_unref(tmp_sock);
-	printf("cleaned objects\n");
 }
 
 void irc_set_user_data(irc_conn_t *c, void *data)

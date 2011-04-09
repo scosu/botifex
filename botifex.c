@@ -69,7 +69,6 @@ error_send:
 	}
 	bot_know_t *bot = boti.know;
 	struct bot_message msg = {m->source, m->middle, m->suffix};
-	printf("[debug] %s -> %s: %s\n", m->source, m->middle, m->suffix);
 	if (m->middle[0] != '#') {
 		bot_know_user_msg(bot, &msg, (void *) c);
 		return NULL;
@@ -88,10 +87,8 @@ error_send:
 void *send_channel(void *user_data, struct bot_message *m)
 {
 	if(user_data == NULL) {
-		printf(m->msg);
 		return NULL;
 	}
-	//printf("irc_message: %s\n", m->msg);
 #ifdef IRC
 	irc_privmsg((irc_conn_t *) user_data, m->dst, m->msg);
 #endif
@@ -151,18 +148,15 @@ int main(int argc, char **argv)
 	char *buf;
 	gsize read_bytes;
 	while (G_IO_STATUS_NORMAL == g_io_channel_read_line(in, &buf, &read_bytes, NULL, NULL) && !shutdown) {
-		printf("line\n");
 		buf[read_bytes - 1] = '\0';
 		if (buf[0] == '!') {
-			printf("cmd\n");
 			struct irc_message msg = {
 					.source = NULL,
 					.cmd = NULL,
 					.middle = NULL,
 					.suffix = buf
 			};
-			int state = bot_cmds_parse_msg(&boti, NULL, &msg);
-			printf("state: %d\n", state);
+			bot_cmds_parse_msg(&boti, NULL, &msg);
 		}
 		g_free(buf);
 	}
@@ -175,26 +169,6 @@ int main(int argc, char **argv)
 			irc_disconnect(cur->data, "cya");
 		} while ((cur = g_slist_next(cur)) != NULL);
 	}
-
-
-/*	bot_know_load(bot, "merastorum");
-	bot_know_set_file(bot, "merastorum");
-	struct irc_callbacks calls;
-	memset(&calls, 0, sizeof(struct irc_callbacks));
-	calls.privmsg = irc_event_privmsg;
-	irc_conn_t *tmp = irc_connect("irc.euirc.net:6667", "botifex", "blub", NULL, &calls, bot);
-	printf("waiting\n");
-	sleep(5);
-	irc_join_channel(tmp, "#merastorum");
-	sleep(1);
-	irc_join_channel(tmp, "#botifex");
-	//irc_privmsg(tmp, "#merastorum", "WAHAHAHA");
-	while (1)
-		sleep(1);
-	printf("exiting\n");
-	irc_disconnect(tmp, "WAHAHAHA");
-	sleep(2);
-	printf("clean shutdown\n");*/
 #endif
 	return 0;
 }
