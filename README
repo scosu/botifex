@@ -1,3 +1,58 @@
+What exactly is botifex?
+
+Botifex is a communication bot currently working only with IRC. The main aspect
+of the development was to provide a communication bot without any language
+dependencies. This is a very complex task, so I hardcoded the seperation of words
+and sentences. But that is the only restriction of language independency.
+Botifex has no purpose than having fun with the sometimes funny stuff it writes.
+It learns everything by itself and combines the known words to new sentences. Botifex
+tries to say something appropriate to the current context. But i couldn't observe
+that behaviour in tests, perhaps the knowledge was to small or the weight for the
+context relations is too small.
+The bot is also able to receive commands and so on, see "COMMANDS".
+
+COMMANDS
+Commands can be placed through the normal IRC or through the standard input. To
+use commands with a higher rightlevel you have to authenticate yourself. All
+commands over the standard input are treated like authenticated ones. The rights
+needed to use a command can be changed via the perm command.
+Commands that depend on a irc-server, are using the same server the IRC command
+is send from, or the last server the bot connected to otherwise.
+A list of all commands:
+
+    !leave <CHANNEL>         The bot leaves the specified channel.
+    !join <CHANNEL>          The bot joins the specified channel.
+    !connect <SERVER>:<PORT> Connect to the server.
+    !disconnect              Disconnects from the server.
+    !save <FILE>             Saves the knowledge to the specified file.
+    !load <FILE>             Loads the knowledge from a file, multiple loads are possible.
+    !reset                   Resets the knowledge
+    !learn <ENABLE>          This enables (1) or disables (0) the learning 
+    !talky <LEVEL>           How chatty should the bot be (between 0 and 100)
+    !auth <PASSWORD>         Authenticate yourself
+    !deauth                  Logout
+    !passwd <NEWPASSWORD>    Set the password for the bot
+    !perm <CMD> <ACCESSLVL>  Sets the access level of the command CMD
+    !nick <NICK>             Set the nick of the bot
+    !autosave <FILE>         Periodically save the knowledge to the file.
+
+
+To use the bot some commands have to be used. For example !nick and !connect.
+
+HOW TO USE
+
+First write all your normal commands into a file. Then you can cat the file and
+pipe it to the binary:
+    cat <STANDARD_COMMANDS> | ./botifex
+
+Of course you can also type your commands on the console.
+
+REQUIREMENTS
+
+glib-2.28 or higher.
+Should work on all posix conform operating systems.
+
+
 LICENSE
 
     botifex is a communication bot for irc networks learning from conversations
